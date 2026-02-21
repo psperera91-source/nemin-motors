@@ -1,0 +1,1261 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+   <meta charset="UTF-8">
+   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+   <title>Nemin Motors POS</title>
+   <!-- PWA Manifest -->
+   <link rel="manifest" href="manifest.json">
+   <meta name="theme-color" content="#e11d48">
+   <meta name="apple-mobile-web-app-capable" content="yes">
+   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+   <link rel="apple-touch-icon" href="logo.jpg">
+
+   <!-- Tailwind CSS -->
+   <script src="https://cdn.tailwindcss.com"></script>
+   <!-- FontAwesome -->
+   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+   <!-- Google Fonts -->
+   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+   <!-- Dexie.js (Kept for migration if needed, but will be replaced) -->
+   <script src="https://unpkg.com/dexie/dist/dexie.js"></script>
+   <!-- Firebase SDKs -->
+   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-storage-compat.js"></script>
+   <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+   <!-- SheetJS for Excel Export -->
+   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+   <style>
+      body {
+         font-family: 'Inter', sans-serif;
+         position: relative;
+      }
+
+      body::before {
+         content: "";
+         position: fixed;
+         top: 0;
+         left: 0;
+         width: 100%;
+         height: 100%;
+         background-image: url('logo.jpg');
+         background-size: 40%;
+         /* Professional size */
+         background-position: center;
+         background-repeat: no-repeat;
+         opacity: 0.04;
+         /* Ultra subtle for premium look */
+         z-index: 0;
+         pointer-events: none;
+      }
+
+      /* Ensure content stays above background */
+      #sidebar,
+      main,
+      .fixed,
+      .absolute {
+         position: relative;
+         z-index: 1;
+      }
+
+      /* Custom Scrollbar */
+      ::-webkit-scrollbar {
+         width: 8px;
+         height: 8px;
+      }
+
+      ::-webkit-scrollbar-track {
+         background: #f1f1f1;
+      }
+
+      ::-webkit-scrollbar-thumb {
+         background: #c7c7c7;
+         border-radius: 4px;
+      }
+
+      ::-webkit-scrollbar-thumb:hover {
+         background: #a8a8a8;
+      }
+
+      /* Glassmorphism for modals */
+      .glass {
+         background: rgba(255, 255, 255, 0.95);
+         backdrop-filter: blur(10px);
+         -webkit-backdrop-filter: blur(10px);
+      }
+
+      /* Print Styles */
+      @media print {
+
+         /* Hide everything unnecessary */
+         #sidebar,
+         main,
+         aside,
+         .fixed,
+         .modal-overlay,
+         #product-modal,
+         #sale-modal,
+         .no-print {
+            display: none !important;
+         }
+
+         /* Ensure bill/agreement is visible */
+         #printable-bill,
+         #printable-agreement {
+            display: block !important;
+            visibility: visible !important;
+            position: static !important;
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 10mm !important;
+         }
+
+         /* Hide the one that isn't being printed */
+         .printing-bill #printable-agreement {
+            display: none !important;
+         }
+
+         .printing-agreement #printable-bill {
+            display: none !important;
+         }
+
+         /* Force background colors/colors to show */
+         * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+         }
+      }
+
+      /* Screen-only hiding */
+      #printable-bill,
+      #printable-agreement {
+         display: none;
+      }
+
+      /* Force Landscape on Mobile */
+      #rotate-notice {
+         display: none;
+      }
+
+      @media screen and (max-width: 900px) and (orientation: portrait) {
+         body {
+            overflow: hidden;
+         }
+
+         #rotate-notice {
+            display: flex !important;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #0f172a;
+            z-index: 9999;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            text-align: center;
+            padding: 2rem;
+         }
+
+         #rotate-notice i {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            animation: rotate-phone 2s infinite ease-in-out;
+         }
+
+         /* Hide main content when valid overlay is up AND not dismissed */
+         body:not(.portrait-allowed) #sidebar,
+         body:not(.portrait-allowed) main,
+         body:not(.portrait-allowed) #login-overlay {
+            display: none !important;
+         }
+
+         /* Hide notice if dismissed */
+         body.portrait-allowed #rotate-notice {
+            display: none !important;
+         }
+      }
+
+      /* Mobile Sidebar Overlay */
+      @media (max-width: 1024px) {
+         #sidebar {
+            position: fixed;
+            height: 100vh;
+            z-index: 50;
+         }
+
+         /* Add overlay when sidebar open */
+         .sidebar-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 40;
+         }
+      }
+
+      @keyframes rotate-phone {
+
+         0%,
+         10% {
+            transform: rotate(0deg);
+         }
+
+         40%,
+         60% {
+            transform: rotate(-90deg);
+         }
+
+         90%,
+         100% {
+            transform: rotate(0deg);
+         }
+      }
+   </style>
+   <script>
+      tailwind.config = {
+         theme: {
+            extend: {
+               colors: {
+                  primary: '#3b82f6',
+                  secondary: '#1e293b',
+                  accent: '#8b5cf6',
+               }
+            }
+         }
+      }
+   </script>
+</head>
+
+<body class="bg-gray-50 text-slate-800 h-screen flex overflow-hidden">
+
+   <!-- Mobile Landscape Prompt -->
+   <div id="rotate-notice" class="hidden md:hidden">
+      <i class="fa-solid fa-mobile-screen-button"></i>
+      <h2 class="text-xl font-bold mb-2">Please Rotate Your Device</h2>
+      <p class="text-slate-400 text-sm max-w-xs">For the best POS experience, please rotate your phone to landscape
+         mode.</p>
+      <button onclick="document.body.classList.add('portrait-allowed')"
+         class="mt-8 text-xs text-slate-500 border border-slate-700 px-4 py-2 rounded-full hover:bg-slate-800 transition-colors">
+         Continue in Portrait (Not Recommended)
+      </button>
+   </div>
+
+   <!-- Login Overlay -->
+   <div id="login-overlay" class="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900 overflow-hidden">
+      <!-- Watermark for login page -->
+      <div class="absolute inset-0 opacity-10 pointer-events-none">
+         <div class="absolute inset-0"
+            style="background-image: url('logo.jpg'); background-size: 30%; background-position: center; background-repeat: no-repeat;">
+         </div>
+      </div>
+
+      <div
+         class="w-full max-w-md p-8 relative z-10 glass rounded-3xl shadow-2xl border border-white/20 animate-fade-in mx-4">
+         <div class="text-center mb-8">
+            <div class="w-24 h-24 mx-auto mb-4 p-2 bg-white rounded-2xl shadow-lg">
+               <img src="logo.jpg" alt="Logo" class="w-full h-full object-contain">
+            </div>
+            <h2 class="text-2xl font-bold text-slate-800">Nemin Motors</h2>
+            <p class="text-slate-500 text-sm mt-1">Bike Sale & Service Center</p>
+         </div>
+
+         <form id="login-form" class="space-y-6" onsubmit="handleLogin(event)">
+            <div>
+               <label class="block text-sm font-semibold text-slate-700 mb-2">Username</label>
+               <div class="relative">
+                  <i class="fa-solid fa-user absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                  <input type="text" id="login-username" required placeholder="Enter username"
+                     class="w-full pl-11 pr-4 py-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all shadow-sm">
+               </div>
+            </div>
+
+            <div>
+               <label class="block text-sm font-semibold text-slate-700 mb-2">Password</label>
+               <div class="relative">
+                  <i class="fa-solid fa-lock absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                  <input type="password" id="login-password" required placeholder="Enter password"
+                     class="w-full pl-11 pr-4 py-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all shadow-sm">
+               </div>
+            </div>
+
+            <button type="submit"
+               class="w-full bg-rose-600 hover:bg-rose-700 text-white font-bold py-4 rounded-xl shadow-lg shadow-rose-500/30 transition-all active:scale-[0.98] flex items-center justify-center gap-3">
+               <span>Sign In</span>
+               <i class="fa-solid fa-arrow-right"></i>
+            </button>
+            <p id="login-error" class="text-red-500 text-sm text-center hidden font-medium">Invalid username or password
+            </p>
+         </form>
+
+         <div class="mt-8 pt-6 border-t border-slate-100 flex justify-between items-center text-xs text-slate-400">
+            <span>v1.0.2 Professional</span>
+            <div class="flex gap-4">
+               <span class="hover:text-slate-600 cursor-pointer">Help</span>
+               <span class="hover:text-slate-600 cursor-pointer">Contact Support</span>
+            </div>
+         </div>
+      </div>
+   </div>
+
+   <!-- Sidebar Overlay -->
+   <div id="sidebar-overlay" class="sidebar-overlay hidden" onclick="toggleMobileSidebar()"></div>
+
+   <!-- Sidebar -->
+   <aside
+      class="fixed inset-y-0 left-0 w-64 bg-slate-900 text-white flex flex-col shadow-xl z-50 transform -translate-x-full lg:translate-x-0 lg:static transition-all duration-300"
+      id="sidebar">
+      <div class="p-6 border-b border-slate-700 flex flex-col items-center">
+         <img src="logo.jpg" alt="Nemin Motors Logo" class="h-12 mb-3 object-contain rounded-lg">
+         <h1
+            class="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-rose-400 to-orange-400 text-center uppercase tracking-tighter">
+            Nemin Motors</h1>
+         <p class="text-[10px] text-slate-400 mt-1 uppercase tracking-widest">Bike Sale & Service</p>
+      </div>
+
+      <nav class="flex-1 p-4 space-y-2 overflow-y-auto">
+         <button onclick="switchTab('dashboard')"
+            class="nav-item w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all hover:bg-slate-800 group text-slate-300"
+            id="nav-dashboard">
+            <i class="fa-solid fa-chart-line text-slate-400 group-hover:text-white transition-colors"></i>
+            <span class="font-medium">Dashboard</span>
+         </button>
+         <button onclick="switchTab('sales')"
+            class="nav-item w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all hover:bg-slate-800 group"
+            id="nav-sales">
+            <i class="fa-solid fa-cash-register text-rose-300 group-hover:text-white transition-colors"></i>
+            <span class="font-medium">Sales Counter</span>
+         </button>
+         <button onclick="switchTab('inventory')"
+            class="nav-item w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all hover:bg-slate-800 group text-slate-300"
+            id="nav-inventory">
+            <i class="fa-solid fa-motorcycle text-slate-400 group-hover:text-white transition-colors"></i>
+            <span class="font-medium">Inventory</span>
+         </button>
+         <button onclick="switchTab('history')"
+            class="nav-item w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all hover:bg-slate-800 group text-slate-300"
+            id="nav-history">
+            <i class="fa-solid fa-clock-rotate-left text-slate-400 group-hover:text-white transition-colors"></i>
+            <span class="font-medium">Sales History</span>
+         </button>
+         <button onclick="switchTab('agreements')"
+            class="nav-item w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all hover:bg-slate-800 group text-slate-300"
+            id="nav-agreements">
+            <i class="fa-solid fa-file-contract text-slate-400 group-hover:text-white transition-colors"></i>
+            <span class="font-medium">Agreements</span>
+         </button>
+
+         <div class="pt-4 mt-2 border-t border-slate-700">
+            <a href="shop.html" target="_blank"
+               class="nav-item w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all hover:bg-slate-800 group text-emerald-400">
+               <i class="fa-solid fa-motorcycle group-hover:text-emerald-300 transition-colors"></i>
+               <span class="font-medium">View Online Shop</span>
+               <i class="fa-solid fa-external-link text-xs opacity-50 ml-auto"></i>
+            </a>
+         </div>
+      </nav>
+
+      <div class="p-4 border-t border-slate-700">
+         <button onclick="logout()"
+            class="w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all text-red-400 hover:bg-red-500/10 group">
+            <i class="fa-solid fa-right-from-bracket"></i>
+            <span class="font-medium">Logout</span>
+         </button>
+         <div class="mt-4 bg-slate-800/50 rounded-lg p-3 text-xs text-slate-400">
+            <p class="font-semibold text-slate-300 mb-1">Support</p>
+            <p>0705799560</p>
+         </div>
+      </div>
+   </aside>
+
+   <!-- Main Content -->
+   <main class="flex-1 flex flex-col relative overflow-hidden">
+      <!-- Header -->
+      <header class="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-6 shadow-sm z-10">
+         <div class="flex items-center text-gray-500">
+            <button id="toggleSidebar" class="p-2 hover:bg-gray-100 rounded-lg mr-4 lg:hidden">
+               <i class="fa-solid fa-bars"></i>
+            </button>
+            <h2 id="page-title" class="text-xl font-semibold text-gray-800">Sales Counter</h2>
+         </div>
+         <div class="flex items-center space-x-4">
+            <div class="text-right hidden sm:block">
+               <p class="text-sm font-medium text-gray-900" id="current-date">Today</p>
+               <p class="text-xs text-gray-500" id="current-time">Time</p>
+            </div>
+            <div
+               class="h-10 w-10 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-600 font-bold border border-indigo-200">
+               NM
+            </div>
+         </div>
+      </header>
+
+      <!-- Content Area -->
+      <div class="flex-1 overflow-hidden relative">
+
+         <!-- VIEW: DASHBOARD -->
+         <div id="view-dashboard" class="view-section hidden absolute inset-0 p-6 overflow-y-auto">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+               <!-- Total Revenue Card -->
+               <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4">
+                  <div
+                     class="w-12 h-12 bg-green-100 text-green-600 rounded-xl flex items-center justify-center text-xl">
+                     <i class="fa-solid fa-money-bill-trend-up"></i>
+                  </div>
+                  <div>
+                     <p class="text-sm text-gray-500 font-medium">Total Revenue</p>
+                     <h3 class="text-2xl font-bold text-gray-900" id="dash-revenue">LKR 0</h3>
+                  </div>
+               </div>
+
+               <!-- Total Profit Card -->
+               <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4">
+                  <div
+                     class="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-xl flex items-center justify-center text-xl">
+                     <i class="fa-solid fa-hand-holding-dollar"></i>
+                  </div>
+                  <div>
+                     <p class="text-sm text-gray-500 font-medium">Total Profit</p>
+                     <h3 class="text-2xl font-bold text-emerald-600" id="dash-profit">LKR 0</h3>
+                  </div>
+               </div>
+
+               <!-- Total Products Card -->
+               <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4">
+                  <div class="w-12 h-12 bg-rose-100 text-rose-600 rounded-xl flex items-center justify-center text-xl">
+                     <i class="fa-solid fa-motorcycle"></i>
+                  </div>
+                  <div>
+                     <p class="text-sm text-gray-500 font-medium">Total Bikes/Items</p>
+                     <h3 class="text-2xl font-bold text-gray-900" id="dash-products">0</h3>
+                  </div>
+               </div>
+
+               <!-- Total Sales Card -->
+               <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4">
+                  <div
+                     class="w-12 h-12 bg-purple-100 text-purple-600 rounded-xl flex items-center justify-center text-xl">
+                     <i class="fa-solid fa-cart-shopping"></i>
+                  </div>
+                  <div>
+                     <p class="text-sm text-gray-500 font-medium">Sales Count</p>
+                     <h3 class="text-2xl font-bold text-gray-900" id="dash-sales-count">0</h3>
+                  </div>
+               </div>
+
+               <!-- Low Stock Card -->
+               <div class="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex items-center gap-4">
+                  <div
+                     class="w-12 h-12 bg-orange-100 text-orange-600 rounded-xl flex items-center justify-center text-xl">
+                     <i class="fa-solid fa-triangle-exclamation"></i>
+                  </div>
+                  <div>
+                     <p class="text-sm text-gray-500 font-medium">Low Stock Items</p>
+                     <h3 class="text-2xl font-bold text-gray-900" id="dash-low-stock">0</h3>
+                  </div>
+               </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+               <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+                  <h3 class="font-bold text-gray-800 mb-4 flex items-center gap-2">
+                     <i class="fa-solid fa-calendar-day text-green-500"></i> Daily Revenue (Last 7 Days)
+                  </h3>
+                  <div id="dash-daily-revenue" class="space-y-3">
+                     <!-- Daily revenue injected here -->
+                     <p class="text-gray-400 text-sm italic py-4 text-center">No sales data yet.</p>
+                  </div>
+               </div>
+
+               <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+                  <h3 class="font-bold text-gray-800 mb-4 flex items-center gap-2">
+                     <i class="fa-solid fa-fire text-red-500"></i> Most Sold Items
+                  </h3>
+                  <div id="dash-top-products" class="space-y-4">
+                     <!-- Top products injected here -->
+                     <p class="text-gray-400 text-sm italic">No sales data yet.</p>
+                  </div>
+               </div>
+            </div>
+
+            <div class="grid grid-cols-1 gap-6">
+               <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+                  <h3 class="font-bold text-gray-800 mb-4 flex items-center gap-2">
+                     <i class="fa-solid fa-clock-rotate-left text-blue-500"></i> Recent Activity
+                  </h3>
+                  <div id="dash-recent-sales" class="space-y-4">
+                     <!-- Recent sales injected here -->
+                     <p class="text-gray-400 text-sm italic">No recent activity.</p>
+                  </div>
+               </div>
+            </div>
+         </div>
+
+         <!-- VIEW: SALES COUNTER -->
+         <div id="view-sales"
+            class="view-section absolute inset-0 p-4 md:p-6 flex flex-col lg:flex-row gap-4 md:gap-6 overflow-hidden">
+            <!-- Product Grid -->
+            <div
+               class="flex-1 flex flex-col bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden h-full">
+               <div class="p-4 border-b border-gray-100 flex gap-4">
+                  <div class="relative flex-1">
+                     <i class="fa-solid fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                     <input type="text" id="sales-search" placeholder="Search bikes, models, or serials..."
+                        class="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 transition-all">
+                  </div>
+               </div>
+               <div class="flex-1 overflow-y-auto p-4" id="product-grid">
+                  <!-- Products injected here -->
+               </div>
+            </div>
+
+            <!-- Cart (Right) -->
+            <div id="cart-container"
+               class="fixed inset-y-0 right-0 w-full max-w-sm bg-white shadow-2xl z-40 transform translate-x-full lg:translate-x-0 lg:static lg:w-96 lg:bg-white lg:rounded-2xl lg:shadow-lg lg:border border-gray-200 flex flex-col overflow-hidden transition-transform duration-300">
+               <!-- Mobile Cart Header -->
+               <div class="p-4 bg-slate-900 text-white flex justify-between items-center lg:hidden">
+                  <h3 class="font-bold flex items-center gap-2">
+                     <i class="fa-solid fa-cart-shopping"></i> Your Cart
+                  </h3>
+                  <button onclick="toggleMobileCart()" class="p-2 hover:bg-slate-800 rounded-lg">
+                     <i class="fa-solid fa-xmark text-xl"></i>
+                  </button>
+               </div>
+               <div class="p-4 bg-gray-50 border-b border-gray-200">
+                  <h3 class="font-semibold text-gray-800 flex items-center gap-2">
+                     <i class="fa-solid fa-receipt text-blue-500"></i> Current Bill
+                  </h3>
+               </div>
+
+               <div class="flex-1 overflow-y-auto p-4 space-y-3" id="cart-items">
+                  <!-- Cart Items injected here -->
+                  <div class="text-center text-gray-400 py-10 flex flex-col items-center">
+                     <i class="fa-solid fa-basket-shopping text-4xl mb-3 text-gray-300"></i>
+                     <p>Cart is empty</p>
+                     <p class="text-xs mt-1">Select items from the list</p>
+                  </div>
+               </div>
+
+               <div class="p-4 bg-gray-50 border-t border-gray-200 space-y-3">
+                  <div class="flex justify-between text-sm text-gray-600">
+                     <span>Subtotal</span>
+                     <span id="cart-subtotal">LKR 0.00</span>
+                  </div>
+                  <div class="flex justify-between items-center text-sm text-gray-600">
+                     <span>Discount (LKR)</span>
+                     <input type="number" id="cart-discount" value="0" min="0" oninput="calculateTotals()"
+                        class="w-24 px-2 py-1 text-right border border-gray-300 rounded focus:border-blue-500 outline-none text-sm bg-white">
+                  </div>
+                  <div class="flex justify-between items-center pt-2 border-t border-gray-200">
+                     <span class="font-bold text-gray-800 text-lg">Total</span>
+                     <span class="font-bold text-blue-600 text-2xl" id="cart-total">LKR 0.00</span>
+                  </div>
+                  <button onclick="processCheckout()"
+                     class="w-full bg-rose-600 hover:bg-rose-700 text-white font-bold py-4 rounded-xl shadow-lg shadow-rose-500/30 transition-all active:scale-[0.98] flex items-center justify-center gap-3">
+                     <i class="fa-solid fa-receipt text-xl"></i>
+                     <span class="text-lg">Checkout & Print Bill</span>
+                  </button>
+               </div>
+            </div>
+
+            <!-- Floating Action Button for Mobile Cart -->
+            <button onclick="toggleMobileCart()" id="mobile-cart-fab"
+               class="lg:hidden fixed bottom-6 right-6 w-16 h-16 bg-blue-600 text-white rounded-full shadow-2xl z-30 flex items-center justify-center animate-bounce">
+               <div class="relative">
+                  <i class="fa-solid fa-cart-shopping text-2xl"></i>
+                  <span id="cart-count-badge"
+                     class="absolute -top-3 -right-3 bg-red-500 text-white text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center border-2 border-white hidden">0</span>
+               </div>
+            </button>
+         </div>
+
+         <!-- VIEW: INVENTORY -->
+         <div id="view-inventory" class="view-section hidden absolute inset-0 p-4 md:p-6 flex flex-col overflow-hidden">
+            <div class="mb-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+               <div class="relative w-full md:w-96">
+                  <i class="fa-solid fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                  <input type="text" id="inventory-search" placeholder="Search inventory..."
+                     class="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 shadow-sm">
+               </div>
+               <div class="flex flex-wrap gap-2 w-full md:w-auto items-center justify-end">
+                  <button onclick="exportInventoryToExcel()"
+                     class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1"><i
+                        class="fa-solid fa-file-excel"></i> Excel</button>
+                  <button onclick="exportInventoryToJSON()"
+                     class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1"><i
+                        class="fa-solid fa-database"></i> JSON</button>
+                  <button onclick="document.getElementById('import-file').click()"
+                     class="bg-amber-600 hover:bg-amber-700 text-white px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1"><i
+                        class="fa-solid fa-file-import"></i> Import</button>
+                  <button onclick="migrateToFirebase()"
+                     class="bg-slate-700 hover:bg-slate-800 text-white px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1"
+                     title="Cloud Sync"><i class="fa-solid fa-cloud-arrow-up"></i> Sync</button>
+                  <button id="bulk-delete-inv-btn" onclick="deleteSelectedInventory()"
+                     class="hidden bg-red-50 text-red-600 px-3 py-2 rounded-xl text-xs font-bold transition-all border border-red-100"><i
+                        class="fa-solid fa-trash"></i> Delete</button>
+                  <button onclick="openProductModal()"
+                     class="bg-rose-600 hover:bg-rose-700 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-lg transition-all flex items-center gap-1"><i
+                        class="fa-solid fa-plus"></i> Add New Bike/Item</button>
+                  <input type="file" id="import-file" class="hidden" accept=".json,.xlsx,.xls"
+                     onchange="importInventory(event)">
+               </div>
+            </div>
+
+            <div class="flex-1 bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden flex flex-col">
+               <div class="overflow-x-auto">
+                  <table class="w-full text-left text-sm text-gray-600">
+                     <thead class="bg-gray-50 text-gray-700 font-medium border-b border-gray-200">
+                        <tr>
+                           <th class="px-6 py-4 w-10">
+                              <input type="checkbox" id="inventory-select-all" onclick="toggleAllInventory()"
+                                 class="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500">
+                           </th>
+                           <th class="px-6 py-4">Bike Model / Chassis Number</th>
+                           <th class="px-6 py-4 w-32">Stock</th>
+                           <th class="px-6 py-4 text-right w-32">Cost (LKR)</th>
+                           <th class="px-6 py-4 text-right w-32">Selling (LKR)</th>
+                           <th class="px-6 py-4 text-center w-24">Actions</th>
+                        </tr>
+                     </thead>
+                     <tbody id="inventory-table-body" class="divide-y divide-gray-100">
+                        <!-- Inventory Rows -->
+                     </tbody>
+                  </table>
+               </div>
+            </div>
+         </div>
+
+         <!-- VIEW: HISTORY -->
+         <div id="view-history" class="view-section hidden absolute inset-0 p-6 flex flex-col overflow-hidden">
+            <div class="flex-1 bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden flex flex-col">
+               <div class="p-4 border-b border-gray-100 flex justify-between items-center">
+                  <h3 class="font-semibold text-gray-800">Recent Transactions</h3>
+                  <button id="bulk-delete-btn" onclick="deleteSelectedSales()"
+                     class="hidden bg-red-50 text-red-600 hover:bg-red-100 px-4 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2">
+                     <i class="fa-solid fa-trash"></i> Delete Selected
+                  </button>
+               </div>
+               <div class="overflow-auto flex-1">
+                  <table class="w-full text-left text-sm text-gray-600">
+                     <thead class="bg-gray-50 text-gray-700 font-medium sticky top-0">
+                        <tr>
+                           <th class="px-6 py-4 w-10">
+                              <input type="checkbox" id="history-select-all" onclick="toggleAllHistory()"
+                                 class="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500">
+                           </th>
+                           <th class="px-6 py-4">Bill ID</th>
+                           <th class="px-6 py-4">Date</th>
+                           <th class="px-6 py-4">Item Details</th>
+                           <th class="px-6 py-4 text-right">Total (LKR)</th>
+                           <th class="px-6 py-4 text-center">Actions</th>
+                        </tr>
+                     </thead>
+                     <tbody id="history-table-body" class="divide-y divide-gray-100">
+                        <!-- History Rows -->
+                     </tbody>
+                  </table>
+               </div>
+            </div>
+         </div>
+
+         <!-- VIEW: AGREEMENTS -->
+         <div id="view-agreements" class="view-section hidden absolute inset-0 p-6 flex flex-col overflow-hidden">
+            <div class="mb-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+               <div class="relative w-full md:w-96">
+                  <i class="fa-solid fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                  <input type="text" id="agreement-search" oninput="loadAgreements()"
+                     placeholder="Search agreements by customer or bike..."
+                     class="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 shadow-sm">
+               </div>
+               <button onclick="openAgreementModal()"
+                  class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-lg shadow-blue-500/30 transition-all flex items-center gap-2">
+                  <i class="fa-solid fa-plus"></i> Create New Agreement
+               </button>
+            </div>
+
+            <div class="flex-1 bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden flex flex-col">
+               <div class="overflow-auto flex-1">
+                  <table class="w-full text-left text-sm text-gray-600">
+                     <thead class="bg-gray-50 text-gray-700 font-medium sticky top-0">
+                        <tr>
+                           <th class="px-6 py-4">Ref #</th>
+                           <th class="px-6 py-4">Date</th>
+                           <th class="px-6 py-4">Customer Name</th>
+                           <th class="px-6 py-4">Bike Details</th>
+                           <th class="px-6 py-4 text-right">Advance (LKR)</th>
+                           <th class="px-6 py-4 text-right">Balance (LKR)</th>
+                           <th class="px-6 py-4 text-center">Actions</th>
+                        </tr>
+                     </thead>
+                     <tbody id="agreement-table-body" class="divide-y divide-gray-100">
+                        <!-- Agreement Rows -->
+                     </tbody>
+                  </table>
+               </div>
+            </div>
+         </div>
+
+      </div>
+   </main>
+
+   <!-- Product Modal -->
+   <div id="product-modal" class="fixed inset-0 z-50 hidden">
+      <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeProductModal()"></div>
+      <div
+         class="absolute inset-y-0 right-0 w-full max-w-2xl bg-white shadow-2xl transform transition-transform duration-300 translate-x-full flex flex-col"
+         id="product-modal-panel">
+         <div class="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+            <h3 class="text-xl font-bold text-gray-800" id="modal-title">Add New Bike / Item</h3>
+            <button onclick="closeProductModal()" class="text-gray-400 hover:text-gray-600">
+               <i class="fa-solid fa-xmark text-2xl"></i>
+            </button>
+         </div>
+
+         <form id="product-form" class="flex-1 overflow-y-auto p-6 space-y-6">
+            <!-- Hidden ID for edit mode -->
+            <input type="hidden" id="product-id">
+
+            <!-- Basic Info -->
+            <div class="space-y-4">
+               <h4 class="text-sm font-bold text-gray-900 uppercase tracking-wider border-b pb-2">Basic Info</h4>
+
+               <!-- Image Upload -->
+               <div class="bg-gray-50 p-4 rounded-xl border border-gray-200">
+                  <label class="block text-sm font-medium text-gray-700 mb-2">Product Image</label>
+                  <div class="flex flex-col gap-4 w-full">
+                     <div id="image-previews" class="flex flex-wrap gap-3">
+                        <div
+                           class="relative w-24 h-24 bg-white rounded-lg overflow-hidden border border-gray-200 flex items-center justify-center shrink-0">
+                           <img id="preview-img" src="" alt="Preview" class="w-full h-full object-cover hidden">
+                           <i class="fa-solid fa-image text-gray-300 text-3xl" id="placeholder-icon"></i>
+                        </div>
+                     </div>
+                     <div class="flex-1">
+                        <input type="file" id="product-image" accept="image/*" multiple class="block w-full text-sm text-slate-500
+                               file:mr-4 file:py-2 file:px-4
+                               file:rounded-full file:border-0
+                               file:text-sm file:font-semibold
+                               file:bg-blue-50 file:text-blue-700
+                               hover:file:bg-blue-100
+                            " />
+                        <p class="text-xs text-gray-500 mt-1">You can select multiple photos. Recommended: Square
+                           images.</p>
+                        <!-- Progress Bar -->
+                        <div id="upload-progress-container" class="w-full bg-gray-200 rounded-full h-1.5 mt-2 hidden">
+                           <div id="upload-progress" class="bg-blue-600 h-1.5 rounded-full transition-all duration-300"
+                              style="width: 0%"></div>
+                        </div>
+                     </div>
+                  </div>
+               </div>
+               <div class="grid grid-cols-2 gap-4">
+                  <div class="col-span-1">
+                     <label class="block text-sm font-medium text-gray-700 mb-1">Category *</label>
+                     <select name="category" required
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all">
+                        <option value="Bike">Bikes</option>
+                        <option value="Spare Part">Spare Parts</option>
+                        <option value="Accessory">Accessories</option>
+                        <option value="Service">Service</option>
+                     </select>
+                  </div>
+                  <!-- Model -->
+                  <div class="col-span-1">
+                     <label class="block text-sm font-medium text-gray-700 mb-1">Product Model *</label>
+                     <input type="text" name="model" required
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                        placeholder="e.g. Honda CD70, Yamaha FZ-S">
+                  </div>
+                  <div class="grid grid-cols-3 gap-4">
+                     <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Cost Price (LKR)</label>
+                        <input type="number" name="cost_price" placeholder="Cost Price"
+                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all">
+                     </div>
+                     <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Selling Price (LKR) *</label>
+                        <input type="number" name="price" required
+                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all">
+                     </div>
+                     <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Quantity *</label>
+                        <input type="number" name="quantity" required
+                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all">
+                     </div>
+                  </div>
+               </div>
+            </div>
+
+            <!-- Specs -->
+            <div class="space-y-4">
+               <h4 class="text-sm font-bold text-gray-900 uppercase tracking-wider border-b pb-2">Specifications</h4>
+               <div class="grid grid-cols-2 gap-4">
+                  <div>
+                     <label class="block text-sm font-medium text-gray-700 mb-1">Engine Capacity (cc)</label>
+                     <input type="text" name="processor"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg outline-none focus:border-rose-500"
+                        placeholder="e.g. 150cc">
+                  </div>
+                  <div>
+                     <label class="block text-sm font-medium text-gray-700 mb-1">Mileage (km/l or reading)</label>
+                     <input type="text" name="ram"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg outline-none focus:border-rose-500"
+                        placeholder="e.g. 45km/l or 12,000 km">
+                  </div>
+                  <div>
+                     <label class="block text-sm font-medium text-gray-700 mb-1">Fuel Type</label>
+                     <input type="text" name="storage"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg outline-none focus:border-rose-500"
+                        placeholder="Petrol, Electric, etc.">
+                  </div>
+                  <div>
+                     <label class="block text-sm font-medium text-gray-700 mb-1">Transmission</label>
+                     <select name="graphics"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all">
+                        <option value="Manual">Manual</option>
+                        <option value="Automatic">Automatic</option>
+                        <option value="Semi-Automatic">Semi-Automatic</option>
+                        <option value="Other">Other</option>
+                     </select>
+                  </div>
+                  <div>
+                     <label class="block text-sm font-medium text-gray-700 mb-1">Color</label>
+                     <input type="text" name="display"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg outline-none focus:border-rose-500">
+                  </div>
+                  <div>
+                     <label class="block text-sm font-medium text-gray-700 mb-1">Manufactured Year</label>
+                     <input type="text" name="os"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg outline-none focus:border-rose-500">
+                  </div>
+                  <div class="col-span-2">
+                     <label class="block text-sm font-medium text-gray-700 mb-1">Registration Number (Plate No)</label>
+                     <input type="text" name="ports"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg outline-none focus:border-rose-500"
+                        placeholder="e.g. WP BZ-1234">
+                  </div>
+                  <div>
+                     <label class="block text-sm font-medium text-gray-700 mb-1">Chassis Number</label>
+                     <input type="text" name="battery_life"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg outline-none focus:border-rose-500"
+                        placeholder="Chassis #">
+                  </div>
+                  <div>
+                     <label class="block text-sm font-medium text-gray-700 mb-1">Engine Number</label>
+                     <input type="text" name="serialNumber"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-rose-500 outline-none transition-all"
+                        placeholder="Engine #">
+                  </div>
+                  <div>
+                     <label class="block text-sm font-medium text-gray-700 mb-1">Conditions</label>
+                     <select name="conditions"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg outline-none focus:border-blue-500">
+                        <option value="Brand New">Brand New</option>
+                        <option value="Used">Used</option>
+                        <option value="Refurbished">Refurbished</option>
+                     </select>
+                  </div>
+                  <div class="col-span-2">
+                     <label class="block text-sm font-medium text-gray-700 mb-1">Additional Items/Features</label>
+                     <input type="text" name="included_items" placeholder="Helmet, Toolkit, Spare Key..."
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg outline-none focus:border-rose-500">
+                  </div>
+                  <div class="col-span-2">
+                     <label class="block text-sm font-medium text-gray-700 mb-1">Warranty (for Bill)</label>
+                     <input type="text" name="warranty" placeholder="6 Months Service..."
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg outline-none focus:border-rose-500">
+                  </div>
+               </div>
+            </div>
+         </form>
+
+         <div class="p-6 border-t border-gray-100 bg-gray-50 flex justify-end gap-3">
+            <button onclick="closeProductModal()"
+               class="px-6 py-2.5 rounded-xl border border-gray-300 text-gray-700 font-medium hover:bg-gray-100 transition-all">Cancel</button>
+            <button onclick="saveProduct()"
+               class="px-6 py-2.5 rounded-xl bg-blue-600 text-white font-medium hover:bg-blue-700 shadow-lg shadow-blue-500/30 transition-all">Save
+               Details</button>
+         </div>
+      </div>
+   </div>
+
+   <!-- Agreement Modal -->
+   <div id="agreement-modal" class="fixed inset-0 z-50 hidden">
+      <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeAgreementModal()"></div>
+      <div
+         class="absolute inset-y-0 right-0 w-full max-w-2xl bg-white shadow-2xl transform transition-transform duration-300 translate-x-full flex flex-col"
+         id="agreement-modal-panel">
+         <div class="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+            <h3 class="text-xl font-bold text-gray-800" id="agreement-modal-title">Create New Agreement / Advance</h3>
+            <button onclick="closeAgreementModal()" class="text-gray-400 hover:text-gray-600">
+               <i class="fa-solid fa-xmark text-2xl"></i>
+            </button>
+         </div>
+
+         <form id="agreement-form" class="flex-1 overflow-y-auto p-6 space-y-6">
+            <input type="hidden" id="agreement-id">
+
+            <!-- Bike Selection -->
+            <div class="space-y-4">
+               <h4 class="text-sm font-bold text-gray-900 uppercase tracking-wider border-b pb-2">Vehicle Details</h4>
+               <div class="grid grid-cols-1 gap-4">
+                  <div>
+                     <label class="block text-sm font-medium text-gray-700 mb-1">Select Bike from Inventory</label>
+                     <select id="agreement-bike-select" onchange="autoFillBikeDetails()" required
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all">
+                        <option value="">-- Choose Bike --</option>
+                        <!-- Options injected here -->
+                     </select>
+                  </div>
+                  <div class="grid grid-cols-2 gap-4">
+                     <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Model / Chassis No</label>
+                        <input type="text" id="agreement-bike-model" readonly
+                           class="w-full px-4 py-2 bg-gray-50 border border-gray-300 rounded-lg text-gray-600 outline-none">
+                     </div>
+                     <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Plate Number</label>
+                        <input type="text" id="agreement-bike-plate" readonly
+                           class="w-full px-4 py-2 bg-gray-50 border border-gray-300 rounded-lg text-gray-600 outline-none">
+                     </div>
+                  </div>
+               </div>
+            </div>
+
+            <!-- Customer Details -->
+            <div class="space-y-4">
+               <h4 class="text-sm font-bold text-gray-900 uppercase tracking-wider border-b pb-2">Customer Details</h4>
+               <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div class="col-span-full">
+                     <label class="block text-sm font-medium text-gray-700 mb-1">Customer Name *</label>
+                     <input type="text" id="agreement-customer-name" required placeholder="Full Name"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+                  </div>
+                  <div>
+                     <label class="block text-sm font-medium text-gray-700 mb-1">NIC Number</label>
+                     <input type="text" id="agreement-customer-nic" placeholder="NIC No"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+                  </div>
+                  <div>
+                     <label class="block text-sm font-medium text-gray-700 mb-1">Phone Number *</label>
+                     <input type="text" id="agreement-customer-phone" required placeholder="Phone No"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+                  </div>
+                  <div class="col-span-full">
+                     <label class="block text-sm font-medium text-gray-700 mb-1">Address</label>
+                     <input type="text" id="agreement-customer-address" placeholder="Residential Address"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+                  </div>
+               </div>
+            </div>
+
+            <!-- Payment Details -->
+            <div class="space-y-4">
+               <h4 class="text-sm font-bold text-gray-900 uppercase tracking-wider border-b pb-2">Payment Terms</h4>
+               <div class="grid grid-cols-3 gap-4">
+                  <div>
+                     <label class="block text-sm font-medium text-gray-700 mb-1">Total Price (LKR)</label>
+                     <input type="number" id="agreement-total-price" oninput="calculateAgreementBalance()" required
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+                  </div>
+                  <div>
+                     <label class="block text-sm font-medium text-gray-700 mb-1">Advance (LKR)</label>
+                     <input type="number" id="agreement-advance" oninput="calculateAgreementBalance()" required
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+                  </div>
+                  <div>
+                     <label class="block text-sm font-medium text-gray-700 mb-1">Balance (LKR)</label>
+                     <input type="number" id="agreement-balance" readonly
+                        class="w-full px-4 py-2 bg-gray-50 border border-gray-300 rounded-lg text-gray-600 outline-none">
+                  </div>
+               </div>
+               <div>
+                  <label class="block text-sm font-medium text-gray-700 mb-1">Balance Due Date</label>
+                  <input type="date" id="agreement-due-date"
+                     class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none">
+               </div>
+            </div>
+
+            <!-- Terms & Conditions -->
+            <div class="space-y-4">
+               <h4 class="text-sm font-bold text-gray-900 uppercase tracking-wider border-b pb-2">Terms & Conditions
+               </h4>
+               <textarea id="agreement-terms" rows="4"
+                  class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm">1. Individual specified above has paid the advance amount for the vehicle.
+2. The advance amount is non-refundable.
+3. The remaining balance should be paid on or before the due date.
+4. Failure to pay the balance might result in cancellation of the booking.</textarea>
+            </div>
+
+            <!-- Digital Signatures -->
+            <div class="space-y-4">
+               <h4 class="text-sm font-bold text-gray-900 uppercase tracking-wider border-b pb-2">Digital Signatures
+               </h4>
+               <div class="grid grid-cols-2 gap-4">
+                  <div class="space-y-2">
+                     <label class="block text-xs font-bold text-gray-500 uppercase">Seller Signature</label>
+                     <div
+                        class="relative bg-white border-2 border-dashed border-gray-200 rounded-xl overflow-hidden group">
+                        <canvas id="seller-sign-pad" class="w-full h-32 cursor-crosshair touch-none"></canvas>
+                        <button type="button" onclick="clearSign('seller')"
+                           class="absolute top-2 right-2 w-7 h-7 bg-white/80 backdrop-blur rounded-full shadow border border-gray-100 text-gray-400 hover:text-rose-600 flex items-center justify-center transition-all opacity-0 group-hover:opacity-100">
+                           <i class="fa-solid fa-eraser text-xs"></i>
+                        </button>
+                     </div>
+                  </div>
+                  <div class="space-y-2">
+                     <label class="block text-xs font-bold text-gray-500 uppercase">Buyer Signature</label>
+                     <div
+                        class="relative bg-white border-2 border-dashed border-gray-200 rounded-xl overflow-hidden group">
+                        <canvas id="buyer-sign-pad" class="w-full h-32 cursor-crosshair touch-none"></canvas>
+                        <button type="button" onclick="clearSign('buyer')"
+                           class="absolute top-2 right-2 w-7 h-7 bg-white/80 backdrop-blur rounded-full shadow border border-gray-100 text-gray-400 hover:text-rose-600 flex items-center justify-center transition-all opacity-0 group-hover:opacity-100">
+                           <i class="fa-solid fa-eraser text-xs"></i>
+                        </button>
+                     </div>
+                  </div>
+               </div>
+               <p class="text-[10px] text-gray-400 italic text-center">Sign directly using your finger or mouse above.
+               </p>
+            </div>
+         </form>
+
+         <div class="p-6 border-t border-gray-100 bg-gray-50 flex justify-end gap-3">
+            <button onclick="closeAgreementModal()"
+               class="px-6 py-2.5 rounded-xl border border-gray-300 text-gray-700 font-medium hover:bg-gray-100 transition-all">Cancel</button>
+            <button onclick="saveAgreement()"
+               class="px-6 py-2.5 rounded-xl bg-rose-600 text-white font-medium hover:bg-rose-700 shadow-lg shadow-rose-500/30 transition-all">
+               <i class="fa-solid fa-file-signature mr-2"></i> Save & Print Agreement
+            </button>
+         </div>
+      </div>
+   </div>
+
+   <!-- Agreement Printer -->
+   <div id="printable-agreement" class="hidden">
+      <div class="p-8 max-w-4xl mx-auto bg-white text-slate-900">
+         <!-- Header -->
+         <div class="flex justify-between items-start mb-8 border-b-2 border-slate-900 pb-4">
+            <div class="flex items-center gap-4">
+               <img src="logo.jpg" alt="Logo" class="h-16 w-16 object-contain rounded">
+               <div>
+                  <h1 class="text-2xl font-black uppercase tracking-tight">Nemin Motors</h1>
+                  <p class="text-xs font-bold uppercase tracking-widest text-slate-500">Bike Sale & Service Center</p>
+                  <p class="text-[10px] text-slate-400 mt-1">Iscola Handiya, Imbulgoda | 0753228884</p>
+               </div>
+            </div>
+            <div class="text-right">
+               <h2 class="text-xl font-bold uppercase mb-1">Agreement</h2>
+               <p class="text-xs font-mono" id="print-ag-id">Ref: #0000</p>
+               <p class="text-xs" id="print-ag-date">Date: 2024-01-01</p>
+            </div>
+         </div>
+
+         <!-- Agreement Body -->
+         <div class="space-y-6 text-sm">
+            <p>This agreement is made between <strong>Nemin Motors</strong> (hereinafter referred to as the "Seller")
+               and the individual named below (hereinafter referred to as the "Buyer"):</p>
+
+            <!-- Customer Table -->
+            <div class="bg-slate-50 p-4 border border-slate-200">
+               <h3 class="font-bold border-b border-slate-300 mb-2 pb-1 uppercase text-xs">Buyer Details</h3>
+               <div class="grid grid-cols-2 gap-y-2">
+                  <p><span class="text-slate-500">Name:</span> <span id="print-ag-cust-name" class="font-bold">-</span>
+                  </p>
+                  <p><span class="text-slate-500">NIC No:</span> <span id="print-ag-cust-nic" class="font-bold">-</span>
+                  </p>
+                  <p><span class="text-slate-500">Phone:</span> <span id="print-ag-cust-phone"
+                        class="font-bold">-</span></p>
+                  <p><span class="text-slate-500">Address:</span> <span id="print-ag-cust-address"
+                        class="font-bold">-</span></p>
+               </div>
+            </div>
+
+            <!-- Vehicle Table -->
+            <div class="bg-slate-50 p-4 border border-slate-200">
+               <h3 class="font-bold border-b border-slate-300 mb-2 pb-1 uppercase text-xs">Vehicle Details</h3>
+               <div class="grid grid-cols-2 gap-y-2">
+                  <p><span class="text-slate-500">Model:</span> <span id="print-ag-bike-model"
+                        class="font-bold">-</span></p>
+                  <p><span class="text-slate-500">Plate No:</span> <span id="print-ag-bike-plate"
+                        class="font-bold">-</span></p>
+                  <p id="print-ag-bike-chassis-container"><span class="text-slate-500">Chassis No:</span> <span
+                        id="print-ag-bike-chassis" class="font-bold">-</span></p>
+                  <p id="print-ag-bike-engine-container"><span class="text-slate-500">Engine No:</span> <span
+                        id="print-ag-bike-engine" class="font-bold">-</span></p>
+               </div>
+            </div>
+
+            <!-- Payment Table -->
+            <div class="bg-slate-50 p-4 border border-slate-200">
+               <h3 class="font-bold border-b border-slate-300 mb-2 pb-1 uppercase text-xs">Payment & Terms</h3>
+               <div class="grid grid-cols-2 gap-y-2">
+                  <p><span class="text-slate-500">Total Price:</span> <span id="print-ag-total" class="font-bold">LKR
+                        -</span></p>
+                  <p><span class="text-slate-500">Advance Paid:</span> <span id="print-ag-advance"
+                        class="font-bold text-green-600 font-black">LKR -</span></p>
+                  <p><span class="text-slate-500">Balance Due:</span> <span id="print-ag-balance"
+                        class="font-bold text-rose-600">LKR -</span></p>
+                  <p><span class="text-slate-500">Due Date:</span> <span id="print-ag-due-date"
+                        class="font-bold">-</span></p>
+               </div>
+            </div>
+
+            <!-- Terms -->
+            <div>
+               <h3 class="font-bold mb-2 uppercase text-xs">Terms & Conditions:</h3>
+               <div id="print-ag-terms" class="text-xs leading-relaxed whitespace-pre-wrap text-slate-700">
+                  <!-- Terms injected here -->
+               </div>
+            </div>
+
+            <!-- Signatures -->
+            <div class="grid grid-cols-2 gap-20 pt-10">
+               <div class="text-center">
+                  <div class="h-24 flex items-center justify-center mb-2">
+                     <img id="print-ag-seller-sign" src="" alt="" class="max-h-full max-w-full object-contain hidden">
+                  </div>
+                  <div class="border-t border-slate-400 pt-2">
+                     <p class="font-bold">SELLER SIGNATURE</p>
+                     <p class="text-[10px] text-slate-400">Nemin Motors Official Stamp</p>
+                  </div>
+               </div>
+               <div class="text-center">
+                  <div class="h-24 flex items-center justify-center mb-2">
+                     <img id="print-ag-buyer-sign" src="" alt="" class="max-h-full max-w-full object-contain hidden">
+                  </div>
+                  <div class="border-t border-slate-400 pt-2">
+                     <p class="font-bold">BUYER SIGNATURE</p>
+                     <p class="text-[10px] text-slate-400">Customer Confirmation</p>
+                  </div>
+               </div>
+            </div>
+         </div>
+      </div>
+   </div>
+
+   <!-- Sale Details Modal -->
+   <div id="sale-modal"
+      class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm transition-all duration-300">
+      <div id="sale-modal-panel"
+         class="bg-white rounded-2xl shadow-2xl w-full max-w-3xl transform scale-95 opacity-0 transition-all duration-300 flex flex-col max-h-[90vh]">
+         <!-- Modal Header -->
+         <div class="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50 rounded-t-2xl">
+            <div>
+               <h3 class="text-xl font-bold text-gray-800" id="modal-sale-id">Sale #0000</h3>
+               <p class="text-sm text-gray-500" id="modal-sale-date">Date: -</p>
+            </div>
+            <button onclick="closeSaleModal()"
+               class="w-8 h-8 rounded-full bg-gray-200 hover:bg-gray-300 flex items-center justify-center text-gray-600 transition-colors">
+               <i class="fa-solid fa-times"></i>
+            </button>
+         </div>
+
+         <!-- Modal Body -->
+         <div class="p-6 overflow-y-auto">
+            <div class="bg-blue-50 rounded-xl p-4 mb-6 border border-blue-100">
+               <table class="w-full text-sm">
+                  <thead class="text-gray-500 font-medium border-b border-blue-200">
+                     <tr>
+                        <th class="pb-2 text-left">Item</th>
+                        <th class="pb-2 text-center">Qty</th>
+                        <th class="pb-2 text-right">Price</th>
+                        <th class="pb-2 text-right">Total</th>
+                     </tr>
+                  </thead>
+                  <tbody id="modal-sale-items" class="divide-y divide-blue-200/50">
+                     <!-- Items -->
+                  </tbody>
+               </table>
+            </div>
+
+            <div class="flex flex-col items-end space-y-2 text-gray-800">
+               <div class="flex justify-between w-64">
+                  <span class="text-gray-500">Subtotal:</span>
+                  <span class="font-medium" id="modal-sale-subtotal">LKR 0.00</span>
+               </div>
+               <div class="flex justify-between w-64 text-red-600" id="modal-discount-row">
+                  <span>Discount:</span>
+                  <span class="font-bold" id="modal-sale-discount">- LKR 0.00</span>
+               </div>
+               <div class="flex justify-between w-64 pt-3 border-t border-gray-200">
+                  <span class="text-lg font-bold">Total:</span>
+                  <span class="text-xl font-bold text-blue-600" id="modal-sale-total">LKR 0.00</span>
+               </div>
+            </div>
+         </div>
+
+         <!-- Modal Footer -->
+         <div class="px-6 py-4 border-t border-gray-100 bg-gray-50 flex justify-end gap-3 rounded-b-2xl">
+            <button id="modal-print-btn"
+               class="px-5 py-2.5 bg-gray-800 hover:bg-gray-900 text-white rounded-xl font-medium shadow-lg shadow-gray-500/20 flex items-center gap-2 transition-all">
+               <i class="fa-solid fa-print"></i> Print Bill
+            </button>
+            <button onclick="closeSaleModal()"
+               class="px-5 py-2.5 border border-gray-300 text-gray-700 rounded-xl font-medium hover:bg-gray-100 transition-all">
+               Close
+            </button>
+         </div>
+      </div>
+   </div>
+
+   <!-- Printable Bill Template -->
+   <div id="printable-bill">
+      <div class="bill-header text-center mb-6">
+         <img src="logo.jpg" alt="Nemin Motors" class="h-24 mx-auto mb-2 object-contain">
+         <h1 class="text-3xl font-bold mb-1 text-blue-900">Nemin Motors</h1>
+         <p class="text-sm text-gray-600">Iscola Handiya, Imbulgoda</p>
+         <p class="text-sm text-gray-600 font-medium mt-1">Tel: 0753228884</p>
+      </div>
+
+      <div class="border-t-2 border-b-2 border-blue-900 py-3 mb-4 flex justify-between text-sm bg-blue-50">
+         <div class="pl-2">
+            <span class="font-bold text-blue-900">Invoice No:</span> <span id="bill-id"
+               class="text-gray-800">#0001</span>
+         </div>
+         <div class="pr-2">
+            <span class="font-bold text-blue-900">Date:</span> <span id="bill-date"
+               class="text-gray-800">2023-10-25</span>
+         </div>
+      </div>
+
+      <table class="w-full text-sm mb-6">
+         <thead class="border-b-2 border-blue-900">
+            <tr class="text-left text-blue-900">
+               <th class="py-2 pl-2">Description</th>
+               <th class="py-2 text-right pr-2">Amount</th>
+            </tr>
+         </thead>
+         <tbody id="bill-items-container" class="align-top divide-y divide-gray-200">
+            <!-- Bill items go here -->
+         </tbody>
+      </table>
+
+      <div class="border-t-2 border-blue-900 pt-2 flex justify-end mb-8">
+         <div class="text-right pr-2">
+            <p class="text-lg font-bold">Total: <span id="bill-total">LKR 0.00</span></p>
+         </div>
+      </div>
+
+      <div class="text-center text-xs mt-12 pt-4 border-t border-dashed border-gray-400">
+         <p>Thank you for your purchase!</p>
+         <p class="mt-1">Warranty void if sticker removed or physically damaged.</p>
+      </div>
+   </div>
+
+   <script src="app.js"></script>
+   <script>
+      if ('serviceWorker' in navigator) {
+         window.addEventListener('load', () => {
+            navigator.serviceWorker.register('/sw.js')
+               .then(reg => console.log('Service Worker Registered'))
+               .catch(err => console.log('Service Worker Error', err));
+         });
+      }
+   </script>
+</body>
+
+</html>

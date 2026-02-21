@@ -1,0 +1,21 @@
+{
+    "name": "Nemin Motors POS & Shop",
+    "short_name": "Nemin Motors",
+    "description": "Bike Sale & Service Center Point of Sale and Inventory System",
+    "start_url": "/index.html",
+    "display": "standalone",
+    "background_color": "#ffffff",
+    "theme_color": "#e11d48",
+    "icons": [
+        {
+            "src": "/logo.jpg",
+            "sizes": "192x192",
+            "type": "image/jpeg"
+        },
+        {
+            "src": "/logo.jpg",
+            "sizes": "512x512",
+            "type": "image/jpeg"
+        }
+    ]
+}
